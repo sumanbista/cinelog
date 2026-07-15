@@ -5,7 +5,6 @@ Used AI for orientation and hygiene, not for the design decisions themselves:
 - Asked it to walk through what `models.py`, `services/collection_service.py`, and `services/watchlist_service.py` do, and how `tests/test_collection.py`'s fixtures/assertions are structured, before touching any review comments — confirmed the `verb_to_noun` naming convention, the `add_to_collection()` dedup pattern, and the existing test fixture shape, which I then followed rather than inventing my own conventions.
 - For Comment 5 (sort order), after writing my own position and reasoning, asked what counterarguments a careful reviewer would raise against it. It surfaced four points. Two were real gaps I hadn't considered — that newest-first can bury older, still-deliberate watchlist adds under whatever was most recently thrown on, and that date-added order reshuffles the whole list on every add whereas alphabetical is stable across visits — so I rewrote the "Engagement with reviewer's point" section to acknowledge both and narrow my final justification to CineLog's actual state (no pinning/reordering/search exists, so whichever default ships is the only ordering users get). The other two points (that citing `get_collection()`'s precedent is weak evidence on its own, and that deferring a `?sort=title` param is itself a tell) I considered and didn't incorporate — my reasoning didn't rely solely on precedent, and I didn't think hedging on the deferred fix made the argument stronger.
 
-
 ## Comment 1 — Rename
 **What I did:** Renamed `save_to_watchlist()` to `add_to_watchlist()` in `services/watchlist_service.py` to match the project's `verb_to_noun` naming convention used elsewhere (e.g. `add_to_collection()`, `remove_from_collection()`). Updated the one call site in `routes/watchlist/watchlist.py` (both the import statement and the function call).
 **How I verified:** Ran `grep -rn "save_to_watchlist" --include="*.py" .` across the repo before and after the change — found exactly 3 references (definition + import + call site) beforehand, 0 remaining afterward.
@@ -49,4 +48,28 @@ I still land on newest-first as the better default for CineLog specifically, for
 **How I verified no conflict remains:** Ran `pytest tests/ -v` — all 6 tests pass (4 collection, 2 watchlist), confirming `WatchlistEntry` imports correctly and the UUID-typed `film_id` works end-to-end through `add_to_watchlist`/`get_watchlist`. Grepped the watchlist code (`services/`, `routes/`) for any remaining `int`/`Integer`/`autoincrement` references — none found. Confirmed the branch history is linear with `git log --merges feature/watchlist ^origin/main` (empty output — no merge commits introduced by this branch).
 
 ## PR Description
-<!-- Written at the end — feature overview, design decisions, manual testing steps -->
+
+### What this feature does
+Adds a watchlist to CineLog: users can save films they intend to watch (as opposed to `CollectionEntry`, which tracks films they've already watched). Two endpoints, both under `/watchlist`, backed by `services/watchlist_service.py`:
+
+- `POST /watchlist/<user_id>/add` — add a film to the user's watchlist (body: `{"film_id": "<uuid>"}`). Rejects a nonexistent `film_id` with `FilmNotFoundError` and a film already on the watchlist with `AlreadyInWatchlistError`, mirroring how `add_to_collection()` handles both cases.
+- `GET /watchlist/<user_id>` — returns the user's watchlist as a list of film dicts (film fields plus `date_added` and `public`), sorted by date added, newest first.
+
+Each `WatchlistEntry` has a `public` boolean (default `True`) controlling whether it's visible to other users — see Comment 4 below for why that default was chosen deliberately rather than inherited.
+
+### Design decisions
+- **Naming convention (Comment 1):** the watchlist "add" function is named `add_to_watchlist()` to match the codebase's `verb_to_noun` convention (`add_to_collection()`, `remove_from_collection()`).
+- **Deduplication (Comment 2):** adding a film already on the watchlist raises `AlreadyInWatchlistError` instead of creating a duplicate row, following the same pattern `add_to_collection()` uses for collections.
+- **Default visibility (Comment 4):** `public=True` by default. `CollectionEntry` (watched films) has no visibility toggle at all — it's always public — so a private-by-default watchlist would be an inconsistent, discovery-suppressing outlier in a community app where most users never touch settings. Full reasoning and the acknowledged privacy tradeoff are in Comment 4 above.
+- **Sort order (Comment 5):** `get_watchlist()` returns newest-added first (previously alphabetical by title), matching `get_collection()`. Full reasoning, including two costs of this choice I initially missed and revised after stress-testing the argument, is in Comment 5 above.
+- **UUID migration (Comment 6):** `WatchlistEntry.film_id` is now a UUID string (`db.String(36)`), consistent with the `Film.id`/`CollectionEntry.film_id` migration that landed on `main` while this PR was open. Full account of the rebase and the silent-conflict issue that caused is in Comment 6 above.
+
+### Manual testing steps
+1. From the repo root, with the virtualenv active: `pip install -r requirements.txt` (if not already installed).
+2. Run the automated suite: `pytest tests/ -v` — expect 6 passed (4 collection, 2 watchlist).
+3. To exercise the endpoints by hand, start the app (`flask run` or however `app.py` is normally launched locally) and:
+   - Create a user and a film via whatever existing setup path the app uses (or via a Python shell using `models.User`/`models.Film`).
+   - `POST /watchlist/<user_id>/add` with `{"film_id": "<a real film uuid>"}` — expect `201` and the new entry back, with `public: true`.
+   - Repeat the same request — expect a `500`/error response corresponding to `AlreadyInWatchlistError` (the route doesn't currently catch it into a friendly 4xx — same as it doesn't catch `FilmNotFoundError` either; this is pre-existing route-level behavior, out of scope for this PR).
+   - `POST /watchlist/<user_id>/add` with a nonexistent `film_id` — expect an error corresponding to `FilmNotFoundError`.
+   - Add a second film, then `GET /watchlist/<user_id>` — expect the second (more recently added) film listed first.
