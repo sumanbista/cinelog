@@ -47,6 +47,11 @@ I still land on newest-first as the better default for CineLog specifically, for
 
 **How I verified no conflict remains:** Ran `pytest tests/ -v` — all 6 tests pass (4 collection, 2 watchlist), confirming `WatchlistEntry` imports correctly and the UUID-typed `film_id` works end-to-end through `add_to_watchlist`/`get_watchlist`. Grepped the watchlist code (`services/`, `routes/`) for any remaining `int`/`Integer`/`autoincrement` references — none found. Confirmed the branch history is linear with `git log --merges feature/watchlist ^origin/main` (empty output — no merge commits introduced by this branch).
 
+## Final Commit History
+`git log --oneline origin/main..HEAD` after the interactive rebase, showing 11 conventional-commit-format commits rebased linearly onto `origin/main` (`bbe206c`) with no merge commits:
+
+![git log --oneline showing the rebased, conventional-commit history for feature/watchlist](screenshot/git-log.png)
+
 ## PR Description
 
 ### What this feature does
