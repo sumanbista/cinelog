@@ -8,8 +8,8 @@
 **How I verified:** Ran `grep -rn "save_to_watchlist" --include="*.py" .` across the repo before and after the change — found exactly 3 references (definition + import + call site) beforehand, 0 remaining afterward.
 
 ## Comment 2 — Deduplication
-**What I did:**
-**How I verified:**
+**What I did:** Added a duplicate check to `add_to_watchlist()` in `services/watchlist_service.py`, mirroring the pattern in `add_to_collection()` (`services/collection_service.py`): after confirming the film exists, query for an existing `WatchlistEntry` matching `(user_id, film_id)`. If one is found, raise a new `AlreadyInWatchlistError` (defined in `watchlist_service.py`, alongside the existing `FilmNotFoundError` reuse) instead of creating a second entry. Only if no existing entry is found does the function create and commit the new `WatchlistEntry`.
+**How I verified:** Read `add_to_collection()` first to confirm the existing convention — it does a `.filter_by(user_id=..., film_id=...).first()` lookup and raises a dedicated `AlreadyInCollectionError` before creating the entry — and followed the same shape rather than inventing a different check (e.g. relying solely on a DB unique constraint / IntegrityError). Manually traced the new code path: existing entry found → `AlreadyInWatchlistError` raised, no new row created; no existing entry → entry created and committed as before.
 
 ## Comment 3 — Missing test
 **What I did:**
