@@ -12,8 +12,8 @@
 **How I verified:** Read `add_to_collection()` first to confirm the existing convention — it does a `.filter_by(user_id=..., film_id=...).first()` lookup and raises a dedicated `AlreadyInCollectionError` before creating the entry — and followed the same shape rather than inventing a different check (e.g. relying solely on a DB unique constraint / IntegrityError). Manually traced the new code path: existing entry found → `AlreadyInWatchlistError` raised, no new row created; no existing entry → entry created and committed as before.
 
 ## Comment 3 — Missing test
-**What I did:**
-**How I verified:**
+**What I did:** Created `tests/test_watchlist.py` with `test_add_to_watchlist_nonexistent_film_raises`, the equivalent of `test_add_to_collection_nonexistent_film_raises` in `tests/test_collection.py`. Reused the same `app` fixture (in-memory SQLite, `db.create_all()`/`db.drop_all()` around the test) and `sample_user` fixture (there's no `conftest.py` yet, so fixtures are duplicated locally the same way the existing test file is self-contained). The test calls `add_to_watchlist()` with a well-formed but nonexistent UUID and asserts it raises `FilmNotFoundError` via `pytest.raises`.
+**How I verified:** Ran `pytest tests/test_watchlist.py -v` — 1 passed.
 
 ## Comment 4 — Default visibility
 **My position:**
